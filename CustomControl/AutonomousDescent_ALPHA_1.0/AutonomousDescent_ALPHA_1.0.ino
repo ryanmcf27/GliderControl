@@ -1,5 +1,12 @@
+/*
+  AutonomousDescent_ALPHA_1.0
+
+  Custom code for Iowa State University's 2024-2025 Design Build Fly (DBF) team's X-1 glider
+  
+*/
+
 /* Libraries */
-#include <TaskScheduler.h>
+#include <TaskScheduler.h> //for more info refer to source repository: https://github.com/arkhipenko/TaskScheduler/tree/master
 
 /* Method Prototypes */
 void updateGPS();
