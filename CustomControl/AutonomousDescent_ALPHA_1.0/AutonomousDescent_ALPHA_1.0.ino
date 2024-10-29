@@ -8,7 +8,7 @@
 /* Libraries */
 #include <TaskScheduler.h> //for more info refer to source repository: https://github.com/arkhipenko/TaskScheduler/tree/master
 #include <CodeCell.h>
-#include <HardwareSerial.h>
+//#include <HardwareSerial.h>
 #include <TinyGPSPlus.h>
 
 /* Method Prototypes */
@@ -102,8 +102,6 @@ void updateGPS() {
       sprintf(buffer, "Latitude: %f, Longitude: %f", sensorData.gpsLat, sensorData.gpsLng);
       Serial.println(buffer);
     }
-
-
   }
 }
 
