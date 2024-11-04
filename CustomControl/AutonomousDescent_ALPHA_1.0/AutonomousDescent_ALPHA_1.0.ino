@@ -8,8 +8,9 @@
 /* Libraries */
 #include <TaskScheduler.h> //for more info refer to source repository: https://github.com/arkhipenko/TaskScheduler/tree/master
 #include <CodeCell.h>
-//#include <HardwareSerial.h>
 #include <TinyGPSPlus.h>
+#include <SparkFun_I2C_GPS_Arduino_Library.h> //Use Library Manager or download here: https://github.com/sparkfun/SparkFun_I2C_GPS_Arduino_Library
+I2CGPS myI2CGPS; //Hook object to the library
 
 /* Method Prototypes */
 void updateGPS();
@@ -31,8 +32,7 @@ struct SensorDataStruct {
 enum {STAGING, FLIGHT, DESCENT} flightState = STAGING;
 
 /* Constants and Pins */
-static const int RXPin = 3, TXPin = 2; //UPDATE for CodeCell
-static const uint32_t GPSBaud = 9600, MonitorBaud = 115200;
+static const uint32_t MonitorBaud = 115200;
 
 /* Tasks */
 #define GPS_TASK_RATE 250
@@ -51,10 +51,7 @@ TinyGPSPlus gps;                  //declare TinyGPSPlus object to handly GPS dat
 SensorDataStruct sensorData;      //declare struct to hold our sensor data
 
 void setup() {
-  //Serial (USB-C) used for printing to the monitor, Serial 0 (ESP32-C3 GPIO20(RX) and GPIO21(TX)) used for communication with NEO-6M GPS
   Serial.begin(MonitorBaud);
-  Serial0.begin(GPSBaud);
-  Serial0.println("GPS Serial test");
   runner.init();
   Serial.println("Initialized scheduler");
   
@@ -82,6 +79,14 @@ void setup() {
   // Initializes the CodeCell for the sensing features we will use (proximity and rotation angle)
   myCodeCell.Init(LIGHT + MOTION_ROTATION); 
 
+  // Check that GPS is connected
+  if (myI2CGPS.begin() == false)
+  {
+    Serial.println("Module failed to respond. Please check wiring.");
+    while (1); //Freeze!
+  }
+  Serial.println("GPS module found!");
+
   delay(2000);
 }
 
@@ -90,9 +95,9 @@ void loop() {
 }
 
 void updateGPS() {
-  //if there is incoming data from the serial port, read and process it with the gps.encode() function
-  if (Serial0.available()){
-    if(gps.encode(Serial0.read())){
+  // get GPS data from i2C
+  if (myI2CGPS.available()){
+    if(gps.encode(myI2CGPS.read())){
       //if the received gps data is successfully encoded, update global variables
       sensorData.gpsLat = gps.location.lat();
       sensorData.gpsLng = gps.location.lng();
