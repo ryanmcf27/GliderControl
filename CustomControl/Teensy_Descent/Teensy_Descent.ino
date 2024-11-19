@@ -33,12 +33,17 @@ struct SensorDataStruct {
 float targetLat = 32.265617;
 float targetLng = -111.273524;
 
+// global flag to tell whether (true) or not (false) the limit switch has been triggered 
+bool limitTriggeredFlag = true;
+unsigned long limitTriggeredTime = 0;
+
 // set up enum for the glider's flight state, initialize to PRERELEASE state
 enum {PRERELEASE, DESCENT, ERROR_STATE} flightState = PRERELEASE;
 
 /* Constants and Pins */
-static const int RXPin = 0, TXPin = 1;
+static const int RXPin = 0, TXPin = 1, LEDPin = 6, LimitPin = 8;
 static const uint32_t MONITOR_BAUD = 115200, GPS_BAUD = 9600;
+#define LIMIT_TRIGGERED_BUFFER_MILLIS 1000
 #define ACCEL_SCALE_FACTOR 1.0  //full scale accelerometer range (16384.0 for 2 G's) - reference dRehmFlight, using 1 for now to see raw IMU output
 #define GYRO_SCALE_FACTOR 1.0     //full scale accelerometer range (131.0 for 250 degrees/sec) - reference dRehmFlight, using 1 for now to see raw IMU output
 //IMU calibration parameters - calibrate IMU using calculate_IMU_error() in the void setup() to get these values, then comment out calculate_IMU_error()
@@ -65,8 +70,16 @@ SoftwareSerial ss_GPS(RXPin, TXPin);  //declare serial connection to the GPS mod
 SensorDataStruct sensorData;          //declare struct to hold our sensor data
 
 void setup() {
+  //setup Serial communication
   Serial.begin(MONITOR_BAUD);
   ss_GPS.begin(GPS_BAUD);
+
+  //setup pins
+  //note: RX and TX pins are set as input and output by default, don't need to explicitly set them here
+  pinMode(LEDPin, OUTPUT);
+  pinMode(LimitPin, INPUT); //might need to switch to INPUT_PULLUP for actual limit switch implementation, this is for testing with simple button
+
+  //setup runners and tasks
   runner.init();
   Serial.println("Initialized scheduler");
   
@@ -88,19 +101,31 @@ void setup() {
 
   delay(1000);
 
-  calculate_IMU_error();
-  delay(1000);
+  //calculate_IMU_error();
+  //delay(1000);
 }
 
 void loop() {
   runner.execute();
   switch(flightState){
     case PRERELEASE:
-      //checks to see if X-1 has been released based on limit switch
-      //if(---){
-        //update flightState
-       // flightState = DESCENT;
-      //}
+      //checks to see if X-1 has been released based on limit switch - TODO: add delay/buffer
+      if(digitalRead(LimitPin) == HIGH){
+        if(!limitTriggeredFlag){
+          limitTriggeredFlag = true;
+          limitTriggeredTime = millis();
+        } else {
+          unsigned long currentMillis = millis();
+          if((currentMillis - limitTriggeredTime) >= LIMIT_TRIGGERED_BUFFER_MILLIS){
+            //start strobing LEDs by enabling strobe task
+            strobeTask.enable();
+            //update flightState
+            flightState = DESCENT;
+          }
+        }
+      } else {
+        limitTriggeredFlag = false;
+      }
       break;
     case DESCENT:
       //TODO - logic for steering descent into target zone
@@ -112,38 +137,49 @@ void loop() {
 }
 
 void updateGPS() {
-  // get GPS data from i2C
-  if (ss_GPS.available()){
-    gps.encode(ss_GPS.read());
-    if(gps.location.isUpdated()){
-      //if the received gps data is successfully encoded, update global variables
-      sensorData.gpsLat = gps.location.lat();
-      sensorData.gpsLng = gps.location.lng();
+  Serial.println("updateGPS");
+  //uncomment the lines below when GPS is connected
+  // // get GPS data from i2C
+  // if (ss_GPS.available()){
+  //   gps.encode(ss_GPS.read());
+  //   if(gps.location.isUpdated()){
+  //     //if the received gps data is successfully encoded, update global variables
+  //     sensorData.gpsLat = gps.location.lat();
+  //     sensorData.gpsLng = gps.location.lng();
       
-      //for testing
-      char buffer [50];
-      sprintf(buffer, "Latitude: %f, Longitude: %f", sensorData.gpsLat, sensorData.gpsLng);
-      Serial.println(buffer);
-    }
-  }
+  //     //for testing
+  //     char buffer [50];
+  //     sprintf(buffer, "Latitude: %f, Longitude: %f", sensorData.gpsLat, sensorData.gpsLng);
+  //     Serial.println(buffer);
+  //   }
+  // }
 }
 
 void updateIMU() {
-  // Get new raw IMU values
-  int16_t AcX,AcY,AcZ,GyX,GyY,GyZ;
-  mpu6050.getMotion6(&AcX, &AcY, &AcZ, &GyX, &GyY, &GyZ);
+  Serial.println("updateIMU");
+  //uncomment the lines below once IMU is connected
+  // // Get new raw IMU values
+  // int16_t AcX,AcY,AcZ,GyX,GyY,GyZ;
+  // mpu6050.getMotion6(&AcX, &AcY, &AcZ, &GyX, &GyY, &GyZ);
 
-  // Update IMU global variables with corrected and scaled values
-  sensorData.accelX = (AcX / ACCEL_SCALE_FACTOR) - AccErrorX;
-  sensorData.accelY = (AcY / ACCEL_SCALE_FACTOR) - AccErrorY;
-  sensorData.accelZ = (AcZ / ACCEL_SCALE_FACTOR) - AccErrorZ;
-  sensorData.roll = (GyX / GYRO_SCALE_FACTOR) - GyroErrorX;
-  sensorData.pitch = (GyY / GYRO_SCALE_FACTOR) - GyroErrorY;
-  sensorData.yaw = (GyZ / GYRO_SCALE_FACTOR) - GyroErrorZ;
+  // // Update IMU global variables with corrected and scaled values
+  // sensorData.accelX = (AcX / ACCEL_SCALE_FACTOR) - AccErrorX;
+  // sensorData.accelY = (AcY / ACCEL_SCALE_FACTOR) - AccErrorY;
+  // sensorData.accelZ = (AcZ / ACCEL_SCALE_FACTOR) - AccErrorZ;
+  // sensorData.roll = (GyX / GYRO_SCALE_FACTOR) - GyroErrorX;
+  // sensorData.pitch = (GyY / GYRO_SCALE_FACTOR) - GyroErrorY;
+  // sensorData.yaw = (GyZ / GYRO_SCALE_FACTOR) - GyroErrorZ;
 }
 
 void strobe() {
-  // TODO - method to strobe LEDs
+  Serial.println("Strobe");
+
+  // Stobe LEDs by setting them to HIGH if they were LOW, and LOW if they were HIGH
+  if(digitalRead(LEDPin) == LOW){
+    digitalWrite(LEDPin, HIGH);
+  } else {
+    digitalWrite(LEDPin, LOW);
+  }
 }
 
 
