@@ -10,11 +10,13 @@
 #include <TinyGPSPlus.h>
 #include <SoftwareSerial.h>
 #include "src/MPU6050/MPU6050.h"
+#include <PWMServo.h> //must use this library because basic Servo.h Arduino library cannot run on Teensy 4.1's processor
 
 /* Method Prototypes */
 void updateGPS();
 void updateIMU();
 void strobe();
+void moveRudder(int angle);
 void calculate_IMU_error();
 
 // set up a global struct to store our sensor data
@@ -41,10 +43,11 @@ unsigned long limitTriggeredTime = 0;
 enum {PRERELEASE, DESCENT, ERROR_STATE} flightState = PRERELEASE;
 
 /* Constants and Pins */
-static const int RXPin = 0, TXPin = 1, LEDPin = 6, LimitPin = 8;
+static const int RXPin = 0, TXPin = 1, ServoPin = 2, LEDPin = 6, LimitPin = 8;
 static const uint32_t MONITOR_BAUD = 115200, GPS_BAUD = 9600;
+static const int RUDDER_RANGE_DEGREES = 90; //Limits the servo's movement from (90 - RUDDER_RANGE_DEGREES) to (90 + RUDDER_RANGE_DEGREES), corrects if invalid input is given to moveRudder function
 #define LIMIT_TRIGGERED_BUFFER_MILLIS 1000
-#define ACCEL_SCALE_FACTOR 1.0  //full scale accelerometer range (16384.0 for 2 G's) - reference dRehmFlight, using 1 for now to see raw IMU output
+#define ACCEL_SCALE_FACTOR 1.0    //full scale accelerometer range (16384.0 for 2 G's) - reference dRehmFlight, using 1 for now to see raw IMU output
 #define GYRO_SCALE_FACTOR 1.0     //full scale accelerometer range (131.0 for 250 degrees/sec) - reference dRehmFlight, using 1 for now to see raw IMU output
 //IMU calibration parameters - calibrate IMU using calculate_IMU_error() in the void setup() to get these values, then comment out calculate_IMU_error()
 float AccErrorX = 0.0;
@@ -68,6 +71,7 @@ MPU6050 mpu6050;                      //declare MPU6050 object for our IMU
 TinyGPSPlus gps;                      //declare TinyGPSPlus object to handle GPS data (convert raw data to be more user friendly)
 SoftwareSerial ss_GPS(RXPin, TXPin);  //declare serial connection to the GPS module
 SensorDataStruct sensorData;          //declare struct to hold our sensor data
+PWMServo rudderServo;                 //declare servo to control rudder
 
 void setup() {
   //setup Serial communication
@@ -78,6 +82,11 @@ void setup() {
   //note: RX and TX pins are set as input and output by default, don't need to explicitly set them here
   pinMode(LEDPin, OUTPUT);
   pinMode(LimitPin, INPUT); //might need to switch to INPUT_PULLUP for actual limit switch implementation, this is for testing with simple button
+  pinMode(ServoPin, OUTPUT);
+
+  //setup servo
+  rudderServo.attach(ServoPin); //attach pin to servo object
+  moveRudder(90);               //set servo to 90 degrees
 
   //setup runners and tasks
   runner.init();
@@ -182,6 +191,23 @@ void strobe() {
   }
 }
 
+void moveRudder(int angle){
+  Serial.print("Moving rudder to ");
+  Serial.print(angle);
+  Serial.println(" degrees.");
+
+  //correct angle if it is an invalid value
+  int rudderLowerBound = 90 - (RUDDER_RANGE_DEGREES / 2);
+  int rudderUpperBound = 90 + (RUDDER_RANGE_DEGREES / 2);
+  if(angle < rudderLowerBound) {
+    angle = rudderLowerBound;
+  } else if (angle > rudderUpperBound) {
+    angle = rudderUpperBound;
+  }
+
+  //set servo position
+  rudderServo.write(angle);
+}
 
 void calculate_IMU_error() {
   //DESCRIPTION: Computes IMU accelerometer and gyro error on startup. Note: vehicle should be powered up on flat surface
