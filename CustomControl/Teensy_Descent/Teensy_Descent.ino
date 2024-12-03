@@ -32,23 +32,29 @@ struct SensorDataStruct {
 };
 
 // global variables to store the coordinates of our target location
-float targetLat = 32.265617;
-float targetLng = -111.273524;
+//float targetLat = 32.265617;
+//float targetLng = -111.273524;
 
 // global flag to tell whether (true) or not (false) the limit switch has been triggered 
 bool limitTriggeredFlag = true;
 unsigned long limitTriggeredTime = 0;
 
+// global variable to store the yaw (direction our glider is facing) when released
+float releasedYaw = 0.0;
+
 // set up enum for the glider's flight state, initialize to PRERELEASE state
-enum {PRERELEASE, DESCENT, ERROR_STATE} flightState = PRERELEASE;
+enum {PRERELEASE, DESCENT_OUT, DESCENT_TURNAROUND, DESCENT_RETURN, DESCENT_CIRCLE, ERROR_STATE} flightState = PRERELEASE;
 
 /* Constants and Pins */
 static const int RXPin = 0, TXPin = 1, ServoPin = 2, LEDPin = 6, LimitPin = 8;
 static const uint32_t MONITOR_BAUD = 115200, GPS_BAUD = 9600;
 static const int RUDDER_RANGE_DEGREES = 90; //Limits the servo's movement from (90 - RUDDER_RANGE_DEGREES) to (90 + RUDDER_RANGE_DEGREES), corrects if invalid input is given to moveRudder function
-#define LIMIT_TRIGGERED_BUFFER_MILLIS 1000
-#define ACCEL_SCALE_FACTOR 1.0    //full scale accelerometer range (16384.0 for 2 G's) - reference dRehmFlight, using 1 for now to see raw IMU output
-#define GYRO_SCALE_FACTOR 1.0     //full scale accelerometer range (131.0 for 250 degrees/sec) - reference dRehmFlight, using 1 for now to see raw IMU output
+static const int LIMIT_TRIGGERED_BUFFER_MILLIS = 1000;
+static const float ACCEL_SCALE_FACTOR = 1.0;    //full scale accelerometer range (16384.0 for 2 G's) - reference dRehmFlight, using 1 for now to see raw IMU output
+static const float GYRO_SCALE_FACTOR = 1.0;     //full scale accelerometer range (131.0 for 250 degrees/sec) - reference dRehmFlight, using 1 for now to see raw IMU output
+//conversion factor to help us find the equation of the lines that we'd like the X-1 to turn around at and to start circular descent 
+static const float DEGREES_PER_FOOT_FROM_START_LINE = 1.109787E-5;     //NOTE this isn't how longitude and latitude work precisely, but will be fine on this small bit of the global scale
+static const int TURNAROUND_FEET_FROM_START_LINE = 200;
 //IMU calibration parameters - calibrate IMU using calculate_IMU_error() in the void setup() to get these values, then comment out calculate_IMU_error()
 float AccErrorX = 0.0;
 float AccErrorY = 0.0;
@@ -128,16 +134,43 @@ void loop() {
           if((currentMillis - limitTriggeredTime) >= LIMIT_TRIGGERED_BUFFER_MILLIS){
             //start strobing LEDs by enabling strobe task
             strobeTask.enable();
+            //set release yaw
+            releasedYaw = sensorData.yaw;
             //update flightState
-            flightState = DESCENT;
+            flightState = DESCENT_OUT;
           }
         }
       } else {
         limitTriggeredFlag = false;
       }
       break;
-    case DESCENT:
-      //TODO - logic for steering descent into target zone
+    case DESCENT_OUT:
+      //fly straight until reaching turn line - could add more control to straighten flight path if not on right path, for now just leave rudder at 90 deg
+      moveRudder(90);
+      if(sensorData.gpsLat >= (3.326530*sensorData.gpsLng + 402.420296 + DEGREES_PER_FOOT_FROM_START_LINE*TURNAROUND_FEET_FROM_START_LINE)){
+        //turn line has been passed, go to DESCENT_TURNAROUND
+        flightState = DESCENT_TURNAROUND;
+      }
+      break;
+    case DESCENT_TURNAROUND:
+      //turn around 180 degrees, using releaseYaw as reference
+      moveRudder(50); //TODO: replace with constant rudder angle for this turn
+      if(abs(sensorData.yaw - releasedYaw) >= 180){
+        //glider has completed 180 degree turn, go to DESCENT_RETURN
+        flightState = DESCENT_RETURN;
+      }
+      break;
+    case DESCENT_RETURN:
+      //fly straight until reaching finish line
+      moveRudder(90);
+      if(sensorData.gpsLat <= (3.326530*sensorData.gpsLng + 402.420296)){
+        //start line has been passed, go to DESCENT_CIRCLE
+        flightState = DESCENT_CIRCLE;
+      }
+      break;
+    case DESCENT_CIRCLE:
+      //set rudder to circle in scoring zone until landing
+      moveRudder(50); //TODO replace with constant rudder angle for our circular descent
       break;
     case ERROR_STATE:
       Serial.println("In ERROR flight state!!!");
