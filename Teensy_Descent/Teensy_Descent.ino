@@ -124,7 +124,7 @@ void loop() {
   runner.execute();
   switch(flightState){
     case PRERELEASE:
-      //checks to see if X-1 has been released based on limit switch - TODO: add delay/buffer
+      //checks to see if X-1 has been released based on limit switch
       if(digitalRead(LimitPin) == HIGH){
         if(!limitTriggeredFlag){
           limitTriggeredFlag = true;
