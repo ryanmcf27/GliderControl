@@ -180,8 +180,8 @@ void loop() {
 
 void updateGPS() {
   Serial.println("updateGPS");
-  //uncomment the lines below when GPS is connected
-  // // get GPS data from i2C
+  // //uncomment the lines below when GPS is connected
+  // // get GPS data from i2C - may have to change to while(ss_GPS.available() > 0)
   // if (ss_GPS.available()){
   //   gps.encode(ss_GPS.read());
   //   if(gps.location.isUpdated()){

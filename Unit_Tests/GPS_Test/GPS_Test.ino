@@ -11,45 +11,38 @@ TinyGPSPlus gps;                      //declare TinyGPSPlus object to handle GPS
 SoftwareSerial ss_GPS(RXPin, TXPin);  //declare serial connection to the GPS module 
 
 void setup() {
-  Serial.begin(115200); //115200
+  Serial.begin(115200);
   ss_GPS.begin(9600);
+  Serial.println("Setup complete.");
 }
 
 void loop() {
-  updateGPS();
-  delay(4000);
-  Serial.println();
-  //i++;
+  while(ss_GPS.available() > 0){
+    gps.encode(ss_GPS.read());
+    if(gps.location.isUpdated()){
+      /* uncomment one of the sections below to read from monitor or to graph in plotter */
 
+      // //monitor version
+      // Serial.print("Lat: ");
+      // Serial.println(gps.location.lat(), 6);
+      // Serial.print("Lng: ");
+      // Serial.println(gps.location.lng(), 6);
+      // Serial.print("Speed (kmph): ");
+      // Serial.println(gps.speed.kmph(), 6);
+      // Serial.print("Altitude (m): ");
+      // Serial.println(gps.altitude.meters(), 6);
+      // Serial.println();
 
-  // while(ss_GPS.available()){
-  //   byte gpsData = ss_GPS.read();
-  //   Serial.write(gpsData);
-  // }
-}
+      //plotter version
+      Serial.print(gps.location.lat(), 6);
+      Serial.print("  ");
+      Serial.print(gps.location.lng(), 6);
+      Serial.print("  ");
+      Serial.print(gps.speed.kmph(), 6);
+      Serial.print("  ");
+      Serial.println(gps.altitude.meters(), 6);
+      //Serial.println(gps.location.lat() + " " + gps.location.lat() + " " + gps.speed.kmph() + " " + gps.altitude.meters());
 
-void updateGPS() {
-  //Serial.println("Updating GPS...");
-  // get GPS data from i2C
-  while(ss_GPS.available()){
-    byte gpsData = ss_GPS.read();
-    Serial.write(gpsData);
+    }
   }
-  // if (ss_GPS.available()){
-  //   //Serial.println(ss_GPS.read());
-  //   byte gpsData = ss_GPS.read();
-  //   Serial.write(gpsData);
-  //   //gps.encode(ss_GPS.read());
-  //   //if(gps.location.isUpdated()){
-  //     //if the received gps data is successfully encoded, print data
-  //     //Serial.print("gpsLat: ");
-  //     //Serial.println(gps.location.lat());
-  //     //Serial.print("gpsLng: ");
-  //     //Serial.println(gps.location.lng());
-  //   //} else {
-  //   //  Serial.println("not updated");
-  //   //}
-  // } else {
-  //   Serial.println("not available");
-  // }
 }
