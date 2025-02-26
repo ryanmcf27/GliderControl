@@ -9,15 +9,15 @@ void calculate_IMU_error();
 MPU6050 mpu6050;                      //declare MPU6050 object for our IMU
 
 //IMU calibration parameters - calibrate IMU using calculate_IMU_error() in the void setup() to get these values, then comment out calculate_IMU_error()
-float AccErrorX = -0.08;
-float AccErrorY = 0.01;
-float AccErrorZ = -0.02;
-float GyroErrorX = -1.52;
-float GyroErrorY= 0.86;
-float GyroErrorZ = 0.79;
+float AccErrorX = 0.06;
+float AccErrorY = -0.29;
+float AccErrorZ = -0.06;
+float GyroErrorX = -2.68;
+float GyroErrorY = 1.51;
+float GyroErrorZ = 1.92;
 
-static const float ACCEL_SCALE_FACTOR = 16384.0;    //full scale accelerometer range (16384.0 for 2 G's) - reference dRehmFlight, using 1 for now to see raw IMU output
-static const float GYRO_SCALE_FACTOR = 131.0;     //full scale accelerometer range (131.0 for 250 degrees/sec) - reference dRehmFlight, using 1 for now to see raw IMU output
+static const float ACCEL_SCALE_FACTOR = 16384.0;    //full scale accelerometer range (16384.0 for +-2Gs)
+static const float GYRO_SCALE_FACTOR = 32.8;     //full scale accelerometer range (32.8 for 500 degrees/sec) - reference dRehmFlight, using 1 for now to see raw IMU output
 
 float AccX, AccY, AccZ;
 float AccX_prev, AccY_prev, AccZ_prev;
@@ -34,7 +34,7 @@ void setup() {
   IMUinit();
 
   //uncomment to get calibration values
-  //calculate_IMU_error();
+  calculate_IMU_error();
 
   delay(1000);
 
@@ -43,7 +43,7 @@ void setup() {
 
 void loop() {
   updateIMU();
-  delay(1000);
+  delay(100);
 }
 
 void IMUinit(){
@@ -60,62 +60,55 @@ void IMUinit(){
   }
 
   //research the details of these ranges (taken from dRehmFlight)
-  mpu6050.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
+  mpu6050.setFullScaleGyroRange(MPU6050_GYRO_FS_500);
   mpu6050.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
 
 }
 
 void updateIMU() {
-  Serial.println("Updating IMU...");
   // Get new raw IMU values
   int16_t AcX,AcY,AcZ,GyX,GyY,GyZ;
   mpu6050.getMotion6(&AcX, &AcY, &AcZ, &GyX, &GyY, &GyZ);
 
-   //Accelerometer
-  AccX = AcX / ACCEL_SCALE_FACTOR; //G's
-  AccY = AcY / ACCEL_SCALE_FACTOR;
-  AccZ = AcZ / ACCEL_SCALE_FACTOR;
-  //Correct the outputs with the calculated error values
-  AccX = AccX - AccErrorX;
-  AccY = AccY - AccErrorY;
-  AccZ = AccZ - AccErrorZ;
+  //Scale and correct accelerometer output
+  AccX = AcX / ACCEL_SCALE_FACTOR - AccErrorX; //G's
+  AccY = AcY / ACCEL_SCALE_FACTOR - AccErrorY;
+  AccZ = AcZ / ACCEL_SCALE_FACTOR - AccErrorZ;
   //LP filter accelerometer data
-  // AccX = (1.0 - B_accel)*AccX_prev + B_accel*AccX;
-  // AccY = (1.0 - B_accel)*AccY_prev + B_accel*AccY;
-  // AccZ = (1.0 - B_accel)*AccZ_prev + B_accel*AccZ;
+  AccX = (1.0 - B_accel)*AccX_prev + B_accel*AccX;
+  AccY = (1.0 - B_accel)*AccY_prev + B_accel*AccY;
+  AccZ = (1.0 - B_accel)*AccZ_prev + B_accel*AccZ;
   AccX_prev = AccX;
   AccY_prev = AccY;
   AccZ_prev = AccZ;
 
-  //Gyro
-  GyroX = GyX / GYRO_SCALE_FACTOR; //deg/sec
-  GyroY = GyY / GYRO_SCALE_FACTOR;
-  GyroZ = GyZ / GYRO_SCALE_FACTOR;
-  //Correct the outputs with the calculated error values
-  GyroX = GyroX - GyroErrorX;
-  GyroY = GyroY - GyroErrorY;
-  GyroZ = GyroZ - GyroErrorZ;
+  //Scale and correct gyro output
+  GyroX = GyX / GYRO_SCALE_FACTOR - GyroErrorX; //deg/sec
+  GyroY = GyY / GYRO_SCALE_FACTOR - GyroErrorY;
+  GyroZ = GyZ / GYRO_SCALE_FACTOR - GyroErrorZ;
   //LP filter gyro data
-  // GyroX = (1.0 - B_gyro)*GyroX_prev + B_gyro*GyroX;
-  // GyroY = (1.0 - B_gyro)*GyroY_prev + B_gyro*GyroY;
-  // GyroZ = (1.0 - B_gyro)*GyroZ_prev + B_gyro*GyroZ;
+  GyroX = (1.0 - B_gyro)*GyroX_prev + B_gyro*GyroX;
+  GyroY = (1.0 - B_gyro)*GyroY_prev + B_gyro*GyroY;
+  GyroZ = (1.0 - B_gyro)*GyroZ_prev + B_gyro*GyroZ;
   GyroX_prev = GyroX;
   GyroY_prev = GyroY;
   GyroZ_prev = GyroZ;
 
-  // print corrected and scaled values
-  Serial.print("AccelX: ");
-  Serial.println((AcX / ACCEL_SCALE_FACTOR) - AccErrorX);
-  Serial.print("AccelY: ");
-  Serial.println((AcY / ACCEL_SCALE_FACTOR) - AccErrorY);
-  Serial.print("AccelZ: ");
-  Serial.println((AcZ / ACCEL_SCALE_FACTOR) - AccErrorZ);
-  Serial.print("GyroX/roll: ");
-  Serial.println((GyX / GYRO_SCALE_FACTOR) - GyroErrorX);
-  Serial.print("GyroY/pitch: ");
-  Serial.println((GyY / GYRO_SCALE_FACTOR) - GyroErrorY);
-  Serial.print("GyroZ/yaw: ");
-  Serial.println((GyZ / GYRO_SCALE_FACTOR) - GyroErrorZ);
+  Serial.printf("%f %f %f %f %f %f\n", AccX, AccY, AccZ, GyroX, GyroY, GyroZ);
+
+  // // print corrected and scaled values
+  // Serial.print("AccelX: ");
+  // Serial.println((AcX / ACCEL_SCALE_FACTOR) - AccErrorX);
+  // Serial.print("AccelY: ");
+  // Serial.println((AcY / ACCEL_SCALE_FACTOR) - AccErrorY);
+  // Serial.print("AccelZ: ");
+  // Serial.println((AcZ / ACCEL_SCALE_FACTOR) - AccErrorZ);
+  // Serial.print("GyroX/roll: ");
+  // Serial.println((GyX / GYRO_SCALE_FACTOR) - GyroErrorX);
+  // Serial.print("GyroY/pitch: ");
+  // Serial.println((GyY / GYRO_SCALE_FACTOR) - GyroErrorY);
+  // Serial.print("GyroZ/yaw: ");
+  // Serial.println((GyZ / GYRO_SCALE_FACTOR) - GyroErrorZ);
 }
 
 void calculate_IMU_error() {
@@ -160,7 +153,7 @@ void calculate_IMU_error() {
   //Divide the sum by 12000 to get the error value
   AccErrorX  = AccErrorX / c;
   AccErrorY  = AccErrorY / c;
-  AccErrorZ  = AccErrorZ / c - 1.0;
+  AccErrorZ  = AccErrorZ / c - 1.0; // -1g because of the force of gravity
   GyroErrorX = GyroErrorX / c;
   GyroErrorY = GyroErrorY / c;
   GyroErrorZ = GyroErrorZ / c;
