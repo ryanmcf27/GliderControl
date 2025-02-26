@@ -5,7 +5,7 @@
 void updateGPS();
 
 static const int RXPin = 0, TXPin = 1;
-int i = 0;
+int i = 0;    
 
 TinyGPSPlus gps;                      //declare TinyGPSPlus object to handle GPS data (convert raw data to be more user friendly)
 SoftwareSerial ss_GPS(RXPin, TXPin);  //declare serial connection to the GPS module 
