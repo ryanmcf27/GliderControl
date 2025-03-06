@@ -6,21 +6,23 @@ void setup() {
   pinMode(ServoPin, OUTPUT);
   //setup servo
   rudderServo.attach(ServoPin); //attach pin to servo object
+  rudderServo.write(90);
+  delay(15);
 }
 
 void loop() {
-  for(int i = 0; i <= 180; i++){
+  for(int i = 0; i <= 18; i++){
     Serial.print("Moving rudder to ");
-    Serial.print(i);
+    Serial.print(i*10);
     Serial.println(" degrees.");
-    rudderServo.write(i);
-    delay(50);
+    rudderServo.write(i*10);
+    delay(1000);
   }
-  for(int i = 180; i >= 0; i--){
+  for(int i = 18; i >= 0; i--){
     Serial.print("Moving rudder to ");
-    Serial.print(i);
+    Serial.print(i*10);
     Serial.println(" degrees.");
-    rudderServo.write(i);
-    delay(50);
+    rudderServo.write(i*10);
+    delay(1000);
   }
 }

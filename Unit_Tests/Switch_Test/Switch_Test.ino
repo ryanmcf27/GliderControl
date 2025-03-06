@@ -1,13 +1,14 @@
 static const int LimitPin = 8;
 
 void setup() {
-  pinMode(LimitPin, INPUT);
+  Serial.begin(115200);
+  pinMode(LimitPin, INPUT_PULLUP);
 }
 
 void loop() {
   if(digitalRead(LimitPin) == HIGH) {
-    Serial.println("Limit switch HIGH");
+    Serial.println("Switch released! (HIGH)");
   } else {
-    Serial.println("Limit switch LOW");
+    Serial.println("Switch being pressed... (LOW)");
   }
 }
