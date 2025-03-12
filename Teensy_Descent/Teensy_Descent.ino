@@ -14,9 +14,10 @@
 
 /* Method Prototypes */
 void updateGPS();
-void updateIMU();
 void strobe();
 void moveRudder(int angle);
+void updateIMU();
+void IMUinit();
 void calculate_IMU_error();
 
 // set up a global struct to store our sensor data
@@ -50,18 +51,24 @@ static const int RXPin = 0, TXPin = 1, ServoPin = 2, LEDPin = 6, LimitPin = 8;
 static const uint32_t MONITOR_BAUD = 115200, GPS_BAUD = 9600;
 static const int RUDDER_RANGE_DEGREES = 90; //Limits the servo's movement from (90 - RUDDER_RANGE_DEGREES) to (90 + RUDDER_RANGE_DEGREES), corrects if invalid input is given to moveRudder function
 static const int LIMIT_TRIGGERED_BUFFER_MILLIS = 1000;
-static const float ACCEL_SCALE_FACTOR = 1.0;    //full scale accelerometer range (16384.0 for 2 G's) - reference dRehmFlight, using 1 for now to see raw IMU output
-static const float GYRO_SCALE_FACTOR = 1.0;     //full scale accelerometer range (131.0 for 250 degrees/sec) - reference dRehmFlight, using 1 for now to see raw IMU output
 //conversion factor to help us find the equation of the lines that we'd like the X-1 to turn around at and to start circular descent 
 static const float DEGREES_PER_FOOT_FROM_START_LINE = 1.109787E-5;     //NOTE this isn't how longitude and latitude work precisely, but will be fine on this small bit of the global scale
 static const int TURNAROUND_FEET_FROM_START_LINE = 200;
-//IMU calibration parameters - calibrate IMU using calculate_IMU_error() in the void setup() to get these values, then comment out calculate_IMU_error()
-float AccErrorX = 0.0;
-float AccErrorY = 0.0;
-float AccErrorZ = 0.0;
-float GyroErrorX = 0.0;
-float GyroErrorY= 0.0;
-float GyroErrorZ = 0.0;
+
+//IMU calibration parameters - calibrate IMU using calculate_IMU_error() in the void setup() to get these error values, then comment out calculate_IMU_error()
+float AccErrorX = 0.06;
+float AccErrorY = -0.29;
+float AccErrorZ = -0.06;
+float GyroErrorX = -2.68;
+float GyroErrorY = 1.51;
+float GyroErrorZ = 1.92;
+
+static const float ACCEL_SCALE_FACTOR = 16384.0;    //full scale accelerometer range (16384.0 for +-2Gs)
+static const float GYRO_SCALE_FACTOR = 32.8;     //full scale accelerometer range (32.8 for 500 degrees/sec) - reference dRehmFlight, using 1 for now to see raw IMU output
+float AccX_prev, AccY_prev, AccZ_prev, GyroX_prev, GyroY_prev, GyroZ_prev;
+float B_accel = 0.14;     //Accelerometer LP filter paramter, (MPU6050 default: 0.14. MPU9250 default: 0.2)
+float B_gyro = 0.1;       //Gyro LP filter paramter, (MPU6050 default: 0.1. MPU9250 default: 0.17)
+
 
 /* Tasks */
 #define GPS_TASK_RATE 250
@@ -87,12 +94,15 @@ void setup() {
   //setup pins
   //note: RX and TX pins are set as input and output by default, don't need to explicitly set them here
   pinMode(LEDPin, OUTPUT);
-  pinMode(LimitPin, INPUT); //might need to switch to INPUT_PULLUP for actual limit switch implementation, this is for testing with simple button
+  pinMode(LimitPin, INPUT_PULLUP);
   pinMode(ServoPin, OUTPUT);
 
   //setup servo
   rudderServo.attach(ServoPin); //attach pin to servo object
   moveRudder(90);               //set servo to 90 degrees
+
+  //setup IMU
+  IMUinit();
 
   //setup runners and tasks
   runner.init();
@@ -116,6 +126,7 @@ void setup() {
 
   delay(1000);
 
+  //uncomment to calculate IMU error values 
   //calculate_IMU_error();
   //delay(1000);
 }
@@ -126,11 +137,14 @@ void loop() {
     case PRERELEASE:
       //checks to see if X-1 has been released based on limit switch
       if(digitalRead(LimitPin) == HIGH){
+        //switch opened (X-1 likely released)
         if(!limitTriggeredFlag){
+          //"starts the stopwatch" for how long the limit switch has been open
           limitTriggeredFlag = true;
           limitTriggeredTime = millis();
         } else {
           unsigned long currentMillis = millis();
+          //if the limit switch has been opened for specified time
           if((currentMillis - limitTriggeredTime) >= LIMIT_TRIGGERED_BUFFER_MILLIS){
             //start strobing LEDs by enabling strobe task
             strobeTask.enable();
@@ -141,6 +155,7 @@ void loop() {
           }
         }
       } else {
+        //switch closed
         limitTriggeredFlag = false;
       }
       break;
@@ -179,67 +194,72 @@ void loop() {
 }
 
 void updateGPS() {
-  Serial.println("updateGPS");
-  // //uncomment the lines below when GPS is connected
-  // // get GPS data from i2C - may have to change to while(ss_GPS.available() > 0)
-  // if (ss_GPS.available()){
-  //   gps.encode(ss_GPS.read());
-  //   if(gps.location.isUpdated()){
-  //     //if the received gps data is successfully encoded, update global variables
-  //     sensorData.gpsLat = gps.location.lat();
-  //     sensorData.gpsLng = gps.location.lng();
+  //Serial.println("updateGPS");
+  // get GPS data from i2C
+  while(ss_GPS.available() > 0){
+    gps.encode(ss_GPS.read());
+    if(gps.location.isUpdated()){
+      //if the received gps data is successfully encoded, update global variables
+      sensorData.gpsLat = gps.location.lat();
+      sensorData.gpsLng = gps.location.lng();
       
-  //     //for testing
-  //     char buffer [50];
-  //     sprintf(buffer, "Latitude: %f, Longitude: %f", sensorData.gpsLat, sensorData.gpsLng);
-  //     Serial.println(buffer);
-  //   }
-  // }
+      // //for testing
+      // char buffer [50];
+      // sprintf(buffer, "Latitude: %f, Longitude: %f", sensorData.gpsLat, sensorData.gpsLng);
+      // Serial.println(buffer);
+    }
+  }
 }
 
 void updateIMU() {
-  Serial.println("updateIMU");
-  //uncomment the lines below once IMU is connected
-  // // Get new raw IMU values
-  // int16_t AcX,AcY,AcZ,GyX,GyY,GyZ;
-  // mpu6050.getMotion6(&AcX, &AcY, &AcZ, &GyX, &GyY, &GyZ);
+  //Serial.println("updateIMU");
 
-  // // Update IMU global variables with corrected and scaled values
-  // sensorData.accelX = (AcX / ACCEL_SCALE_FACTOR) - AccErrorX;
-  // sensorData.accelY = (AcY / ACCEL_SCALE_FACTOR) - AccErrorY;
-  // sensorData.accelZ = (AcZ / ACCEL_SCALE_FACTOR) - AccErrorZ;
-  // sensorData.roll = (GyX / GYRO_SCALE_FACTOR) - GyroErrorX;
-  // sensorData.pitch = (GyY / GYRO_SCALE_FACTOR) - GyroErrorY;
-  // sensorData.yaw = (GyZ / GYRO_SCALE_FACTOR) - GyroErrorZ;
+  // Get new raw IMU values
+  int16_t AcX,AcY,AcZ,GyX,GyY,GyZ;
+  mpu6050.getMotion6(&AcX, &AcY, &AcZ, &GyX, &GyY, &GyZ);
+
+  // Correct and scale accel and gyro values
+  float tempAcX = (AcX / ACCEL_SCALE_FACTOR) - AccErrorX;
+  float tempAcY = (AcY / ACCEL_SCALE_FACTOR) - AccErrorY;
+  float tempAcZ = (AcZ / ACCEL_SCALE_FACTOR) - AccErrorZ;
+  float tempGyX = (GyX / GYRO_SCALE_FACTOR) - GyroErrorX;
+  float tempGyY = (GyY / GYRO_SCALE_FACTOR) - GyroErrorY;
+  float tempGyZ = (GyZ / GYRO_SCALE_FACTOR) - GyroErrorZ;
+
+  // LP filter scaled values and save them to global vars
+  sensorData.accelX = (1.0 - B_accel)*AccX_prev + B_accel*tempAcX;
+  sensorData.accelY = (1.0 - B_accel)*AccY_prev + B_accel*tempAcY;
+  sensorData.accelZ = (1.0 - B_accel)*AccZ_prev + B_accel*tempAcZ;
+  sensorData.roll =   (1.0 - B_gyro)*GyroX_prev + B_gyro*tempGyX;
+  sensorData.pitch =  (1.0 - B_gyro)*GyroY_prev + B_gyro*tempGyY;
+  sensorData.yaw =    (1.0 - B_gyro)*GyroZ_prev + B_gyro*tempGyZ;
+
+  // Update previous variables
+  AccX_prev = sensorData.accelX;
+  AccY_prev = sensorData.accelY;
+  AccZ_prev = sensorData.accelZ;
+  GyroX_prev = sensorData.gyroX;
+  GyroY_prev = sensorData.gyroY;
+  GyroZ_prev = sensorData.gyroZ;
 }
 
-void strobe() {
-  Serial.println("Strobe");
+void IMUinit(){
+  //initialize the IMU
+  Wire.begin();
+  Wire.setClock(200000); //400 kHz max...
 
-  // Stobe LEDs by setting them to HIGH if they were LOW, and LOW if they were HIGH
-  if(digitalRead(LEDPin) == LOW){
-    digitalWrite(LEDPin, HIGH);
-  } else {
-    digitalWrite(LEDPin, LOW);
-  }
-}
+  mpu6050.initialize();
 
-void moveRudder(int angle){
-  Serial.print("Moving rudder to ");
-  Serial.print(angle);
-  Serial.println(" degrees.");
-
-  //correct angle if it is an invalid value
-  int rudderLowerBound = 90 - (RUDDER_RANGE_DEGREES / 2);
-  int rudderUpperBound = 90 + (RUDDER_RANGE_DEGREES / 2);
-  if(angle < rudderLowerBound) {
-    angle = rudderLowerBound;
-  } else if (angle > rudderUpperBound) {
-    angle = rudderUpperBound;
+  if (mpu6050.testConnection() == false) {
+    Serial.println("MPU6050 initialization unsuccessful");
+    Serial.println("Check MPU6050 wiring or try cycling power");
+    while(1) {}
   }
 
-  //set servo position
-  rudderServo.write(angle);
+  //research the details of these ranges (taken from dRehmFlight)
+  mpu6050.setFullScaleGyroRange(MPU6050_GYRO_FS_500);
+  mpu6050.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
+
 }
 
 void calculate_IMU_error() {
@@ -310,4 +330,33 @@ void calculate_IMU_error() {
   Serial.println(";");
 
   Serial.println("Paste these values in user specified variables section and comment out calculate_IMU_error() in void setup.");
+}
+
+void strobe() {
+  Serial.println("Strobe");
+
+  // Stobe LEDs by setting them to HIGH if they were LOW, and LOW if they were HIGH
+  if(digitalRead(LEDPin) == LOW){
+    digitalWrite(LEDPin, HIGH);
+  } else {
+    digitalWrite(LEDPin, LOW);
+  }
+}
+
+void moveRudder(int angle){
+  Serial.print("Moving rudder to ");
+  Serial.print(angle);
+  Serial.println(" degrees.");
+
+  //correct angle if it is an invalid value
+  int rudderLowerBound = 90 - (RUDDER_RANGE_DEGREES / 2);
+  int rudderUpperBound = 90 + (RUDDER_RANGE_DEGREES / 2);
+  if(angle < rudderLowerBound) {
+    angle = rudderLowerBound;
+  } else if (angle > rudderUpperBound) {
+    angle = rudderUpperBound;
+  }
+
+  //set servo position
+  rudderServo.write(angle);
 }

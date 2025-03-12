@@ -4,7 +4,6 @@ PWMServo rudderServo;                 //declare servo to control rudder
 
 void setup() {
   pinMode(ServoPin, OUTPUT);
-  //setup servo
   rudderServo.attach(ServoPin); //attach pin to servo object
   rudderServo.write(90);
   delay(15);
