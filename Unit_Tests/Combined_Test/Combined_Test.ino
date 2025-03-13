@@ -1,7 +1,7 @@
 /*
-  Teensy_Descent
+  Combined_Test
 
-  Custom code for Iowa State University's 2024-2025 Design Build Fly (DBF) team's X-1 glider
+  Code to test all of the functionality of Iowa State University's 2024-2025 Design Build Fly (DBF) team's X-1 glider
   
 */
 
@@ -35,28 +35,11 @@ struct SensorDataStruct {
   float accelZ = 0.0;     //X-1's acceleration in the Z direction
 };
 
-// global variables to store the coordinates of our target location
-//float targetLat = 32.265617;
-//float targetLng = -111.273524;
-
-// global flag to tell whether (true) or not (false) the limit switch has been triggered 
-bool limitTriggeredFlag = true;
-unsigned long limitTriggeredTime = 0;
-
-// global variable to store the yaw (direction our glider is facing) when released
-float releasedYaw = 0.0;
-
-// set up enum for the glider's flight state, initialize to PRERELEASE state
-enum {PRERELEASE, DESCENT_OUT, DESCENT_TURNAROUND, DESCENT_RETURN, DESCENT_CIRCLE, ERROR_STATE} flightState = PRERELEASE;
-
 /* Constants and Pins */
 static const int RXPin = 0, TXPin = 1, ServoPin = 2, LEDPin = 6, LimitPin = 8;
 static const uint32_t MONITOR_BAUD = 115200, GPS_BAUD = 9600;
 static const int RUDDER_RANGE_DEGREES = 90; //Limits the servo's movement from (90 - RUDDER_RANGE_DEGREES) to (90 + RUDDER_RANGE_DEGREES), corrects if invalid input is given to moveRudder function
-static const int LIMIT_TRIGGERED_BUFFER_MILLIS = 1000;
-//conversion factor to help us find the equation of the lines that we'd like the X-1 to turn around at and to start circular descent 
-static const float DEGREES_PER_FOOT_FROM_START_LINE = 1.109787E-5;     //NOTE this isn't how longitude and latitude work precisely, but will be fine on this small bit of the global scale
-static const int TURNAROUND_FEET_FROM_START_LINE = 200;
+
 //values for storing data to the SD card
 const int CS = BUILTIN_SDCARD;
 const char* FILENAME = "Teensy_Descent_OUT.txt";
@@ -155,63 +138,18 @@ void setup() {
 
 void loop() {
   runner.execute();
-  switch(flightState){
-    case PRERELEASE:
-      //checks to see if X-1 has been released based on limit switch
-      if(digitalRead(LimitPin) == HIGH){
-        //switch opened (X-1 likely released)
-        if(!limitTriggeredFlag){
-          //"starts the stopwatch" for how long the limit switch has been open
-          limitTriggeredFlag = true;
-          limitTriggeredTime = millis();
-        } else {
-          unsigned long currentMillis = millis();
-          //if the limit switch has been opened for specified time
-          if((currentMillis - limitTriggeredTime) >= LIMIT_TRIGGERED_BUFFER_MILLIS){
-            //start strobing LEDs by enabling strobe task
-            strobeTask.enable();
-            //set release yaw
-            releasedYaw = sensorData.yaw;
-            //update flightState
-            flightState = DESCENT_OUT;
-          }
-        }
-      } else {
-        //switch closed
-        limitTriggeredFlag = false;
-      }
-      break;
-    case DESCENT_OUT:
-      //fly straight until reaching turn line - could add more control to straighten flight path if not on right path, for now just leave rudder at 90 deg
-      moveRudder(90);
-      if(sensorData.gpsLat >= (3.326530*sensorData.gpsLng + 402.420296 + DEGREES_PER_FOOT_FROM_START_LINE*TURNAROUND_FEET_FROM_START_LINE)){
-        //turn line has been passed, go to DESCENT_TURNAROUND
-        flightState = DESCENT_TURNAROUND;
-      }
-      break;
-    case DESCENT_TURNAROUND:
-      //turn around 180 degrees, using releaseYaw as reference
-      moveRudder(50); //TODO: replace with constant rudder angle for this turn
-      if(abs(sensorData.yaw - releasedYaw) >= 180){
-        //glider has completed 180 degree turn, go to DESCENT_RETURN
-        flightState = DESCENT_RETURN;
-      }
-      break;
-    case DESCENT_RETURN:
-      //fly straight until reaching finish line
-      moveRudder(90);
-      if(sensorData.gpsLat <= (3.326530*sensorData.gpsLng + 402.420296)){
-        //start line has been passed, go to DESCENT_CIRCLE
-        flightState = DESCENT_CIRCLE;
-      }
-      break;
-    case DESCENT_CIRCLE:
-      //set rudder to circle in scoring zone until landing
-      moveRudder(50); //TODO replace with constant rudder angle for our circular descent
-      break;
-    case ERROR_STATE:
-      Serial.println("In ERROR flight state!!!");
-      break;
+  
+  // test can analyze the functionality of all of the sensors based on the output to the SD care and terminal (from sdTask)
+  // may want to increase the task rate of sdTask depending on how sensitive you would like the test to be
+
+  // test the servo with a simple sweep
+  for(int i = 0; i <= 18; i++){
+    rudderServo.write(i*10);
+    delay(100);
+  }
+  for(int i = 18; i >= 0; i--){
+    rudderServo.write(i*10);
+    delay(100);
   }
 }
 
