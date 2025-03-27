@@ -17,30 +17,31 @@ void setup() {
 }
 
 void loop() {
+  //Serial.println("loop top");
   while(ss_GPS.available() > 0){
     gps.encode(ss_GPS.read());
     if(gps.location.isUpdated()){
       /* uncomment one of the sections below to read from monitor or to graph in plotter */
 
-      // //monitor version
-      // Serial.print("Lat: ");
-      // Serial.println(gps.location.lat(), 6);
-      // Serial.print("Lng: ");
-      // Serial.println(gps.location.lng(), 6);
-      // Serial.print("Speed (kmph): ");
-      // Serial.println(gps.speed.kmph(), 6);
-      // Serial.print("Altitude (m): ");
-      // Serial.println(gps.altitude.meters(), 6);
-      // Serial.println();
+      //monitor version
+      Serial.print("Lat: ");
+      Serial.println(gps.location.lat(), 6);
+      Serial.print("Lng: ");
+      Serial.println(gps.location.lng(), 6);
+      Serial.print("Speed (kmph): ");
+      Serial.println(gps.speed.kmph(), 6);
+      Serial.print("Altitude (m): ");
+      Serial.println(gps.altitude.meters(), 6);
+      Serial.println();
 
       //plotter version
-      Serial.print(gps.location.lat(), 6);
-      Serial.print("  ");
-      Serial.print(gps.location.lng(), 6);
-      Serial.print("  ");
-      Serial.print(gps.speed.kmph(), 6);
-      Serial.print("  ");
-      Serial.println(gps.altitude.meters(), 6);
+      // Serial.print(gps.location.lat(), 6);
+      // Serial.print("  ");
+      // Serial.print(gps.location.lng(), 6);
+      // Serial.print("  ");
+      // Serial.print(gps.speed.kmph(), 6);
+      // Serial.print("  ");
+      // Serial.println(gps.altitude.meters(), 6);
       //Serial.println(gps.location.lat() + " " + gps.location.lat() + " " + gps.speed.kmph() + " " + gps.altitude.meters());
 
     }

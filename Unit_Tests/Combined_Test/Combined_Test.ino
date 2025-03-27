@@ -16,6 +16,7 @@
 
 /* Method Prototypes */
 void updateGPS();
+void servoResponse();
 void strobe();
 void moveRudder(int angle);
 void updateIMU();
@@ -27,9 +28,9 @@ void outputToSD();
 struct SensorDataStruct {
   float gpsLat = 0.0;     //X-1's latitude (degrees)
   float gpsLng = 0.0;     //X-1's longitude (degrees)
-  float roll = 0.0;       //roll angle (degrees) - may need to add offset if IMU isn't mounted flat
-  float pitch = 0.0;      //pitch angle (degrees) - may need to add offset if IMU isn't mounted flat
-  float yaw = 0.0;        //yaw angle (degrees) - may need to add offset if IMU isn't mounted flat
+  float gyroX = 0.0;      //X-1's deg/sec around the X  axis 
+  float gyroY = 0.0;      //X-1's deg/sec around the Y  axis 
+  float gyroZ = 0.0;      //X-1's deg/sec around the Z  axis 
   float accelX = 0.0;     //X-1's acceleration in the X direction
   float accelY = 0.0;     //X-1's acceleration in the Y direction
   float accelZ = 0.0;     //X-1's acceleration in the Z direction
@@ -38,11 +39,11 @@ struct SensorDataStruct {
 /* Constants and Pins */
 static const int RXPin = 0, TXPin = 1, ServoPin = 2, LEDPin = 6, LimitPin = 8;
 static const uint32_t MONITOR_BAUD = 115200, GPS_BAUD = 9600;
-static const int RUDDER_RANGE_DEGREES = 90; //Limits the servo's movement from (90 - RUDDER_RANGE_DEGREES) to (90 + RUDDER_RANGE_DEGREES), corrects if invalid input is given to moveRudder function
+static const int RUDDER_RANGE_DEGREES = 180; //Limits the servo's movement from (90 - RUDDER_RANGE_DEGREES) to (90 + RUDDER_RANGE_DEGREES), corrects if invalid input is given to moveRudder function
 
 //values for storing data to the SD card
 const int CS = BUILTIN_SDCARD;
-const char* FILENAME = "Teensy_Descent_OUT.txt";
+const char* FILENAME = "Combined_Test_OUT.txt";
 
 
 //IMU calibration parameters - calibrate IMU using calculate_IMU_error() in the void setup() to get these error values, then comment out calculate_IMU_error()
@@ -61,14 +62,14 @@ float B_gyro = 0.1;       //Gyro LP filter paramter, (MPU6050 default: 0.1. MPU9
 
 
 /* Tasks */
-#define GPS_TASK_RATE 250
-#define IMU_TASK_RATE 250
+#define SERVO_TASK_RATE 1000
+#define IMU_TASK_RATE 100
 #define STROBE_TASK_RATE 250
-#define SD_TASK_RATE 1000
-Task gpsTask(GPS_TASK_RATE, TASK_FOREVER, &updateGPS);      //update GPS global variables every GPS_TASK_RATE ms, will be enabled from the start
-Task imuTask(IMU_TASK_RATE, TASK_FOREVER, &updateIMU);      //update IMU global variables every IMU_TASK_RATE ms, will be enabled from the start
-Task strobeTask(STROBE_TASK_RATE, TASK_FOREVER, &strobe);   //strobe lights every STROBE_TASK_RATE ms, won't be enabled until release
-Task sdTask(SD_TASK_RATE, TASK_FOREVER, &outputToSD);
+#define SD_TASK_RATE 500
+Task servoTask(SERVO_TASK_RATE, TASK_FOREVER, &servoResponse);      //update servo position based on limit switch, will be enabled from the start
+Task imuTask(IMU_TASK_RATE, TASK_FOREVER, &updateIMU);              //update IMU global variables every IMU_TASK_RATE ms, will be enabled from the start
+Task strobeTask(STROBE_TASK_RATE, TASK_FOREVER, &strobe);           //strobe lights every STROBE_TASK_RATE ms, won't be enabled until release
+Task sdTask(SD_TASK_RATE, TASK_FOREVER, &outputToSD);               //store sensor data to SD card and print it to serial monitor
 
 /* Declaring Components */
 Scheduler runner;                     //declare our task scheduler
@@ -108,8 +109,8 @@ void setup() {
   runner.init();
   Serial.println("Initialized scheduler");
   
-  runner.addTask(gpsTask);
-  Serial.println("added gpsTask");
+  runner.addTask(servoTask);
+  Serial.println("added servoTask");
   
   runner.addTask(imuTask);
   Serial.println("added imuTask");
@@ -122,10 +123,13 @@ void setup() {
 
   delay(1000);
   
-  gpsTask.enable();
-  Serial.println("Enabled gpsTask");
+  //enable all tasks for testing
+  servoTask.enable();
+  Serial.println("Enabled servoTask");
   imuTask.enable();
   Serial.println("Enabled imuTask");
+  strobeTask.enable();
+  Serial.println("Enabled strobeTask");
   sdTask.enable();
   Serial.println("Enabled sdTask");
 
@@ -136,25 +140,25 @@ void setup() {
   //delay(1000);
 }
 
+// test can analyze the functionality of all of the sensors based on the output to the SD care and terminal (from sdTask)
+// may want to increase the task rate of sdTask depending on how sensitive you would like the test to be
 void loop() {
+  // TaskScheduler manages most of the tasks
   runner.execute();
-  
-  // test can analyze the functionality of all of the sensors based on the output to the SD care and terminal (from sdTask)
-  // may want to increase the task rate of sdTask depending on how sensitive you would like the test to be
+  // GPS handled seperately due to delay issues interferring with reading I2C data
+  updateGPS();
+}
 
-  // test the servo with a simple sweep
-  for(int i = 0; i <= 18; i++){
-    rudderServo.write(i*10);
-    delay(100);
-  }
-  for(int i = 18; i >= 0; i--){
-    rudderServo.write(i*10);
-    delay(100);
+void servoResponse() {
+  //move the servo to a position based on whether the limit switch is pressed or not
+  if(digitalRead(LimitPin)){
+    moveRudder(30);
+  } else {
+    moveRudder(150);
   }
 }
 
 void updateGPS() {
-  //Serial.println("updateGPS");
   // get GPS data from i2C
   while(ss_GPS.available() > 0){
     gps.encode(ss_GPS.read());
@@ -162,18 +166,11 @@ void updateGPS() {
       //if the received gps data is successfully encoded, update global variables
       sensorData.gpsLat = gps.location.lat();
       sensorData.gpsLng = gps.location.lng();
-      
-      // //for testing
-      // char buffer [50];
-      // sprintf(buffer, "Latitude: %f, Longitude: %f", sensorData.gpsLat, sensorData.gpsLng);
-      // Serial.println(buffer);
     }
   }
 }
 
 void updateIMU() {
-  //Serial.println("updateIMU");
-
   // Get new raw IMU values
   int16_t AcX,AcY,AcZ,GyX,GyY,GyZ;
   mpu6050.getMotion6(&AcX, &AcY, &AcZ, &GyX, &GyY, &GyZ);
@@ -190,17 +187,17 @@ void updateIMU() {
   sensorData.accelX = (1.0 - B_accel)*AccX_prev + B_accel*tempAcX;
   sensorData.accelY = (1.0 - B_accel)*AccY_prev + B_accel*tempAcY;
   sensorData.accelZ = (1.0 - B_accel)*AccZ_prev + B_accel*tempAcZ;
-  sensorData.roll   = (1.0 - B_gyro)*GyroX_prev + B_gyro*tempGyX;
-  sensorData.pitch  = (1.0 - B_gyro)*GyroY_prev + B_gyro*tempGyY;
-  sensorData.yaw    = (1.0 - B_gyro)*GyroZ_prev + B_gyro*tempGyZ;
+  sensorData.gyroX   = (1.0 - B_gyro)*GyroX_prev + B_gyro*tempGyX;
+  sensorData.gyroY  = (1.0 - B_gyro)*GyroY_prev + B_gyro*tempGyY;
+  sensorData.gyroZ    = (1.0 - B_gyro)*GyroZ_prev + B_gyro*tempGyZ;
 
   // Update previous variables
   AccX_prev = sensorData.accelX;
   AccY_prev = sensorData.accelY;
   AccZ_prev = sensorData.accelZ;
-  GyroX_prev = sensorData.roll;
-  GyroY_prev = sensorData.pitch;
-  GyroZ_prev = sensorData.yaw;
+  GyroX_prev = sensorData.gyroX;
+  GyroY_prev = sensorData.gyroY;
+  GyroZ_prev = sensorData.gyroZ;
 }
 
 void IMUinit(){
@@ -293,8 +290,6 @@ void calculate_IMU_error() {
 }
 
 void strobe() {
-  Serial.println("Strobe");
-
   // Stobe LEDs by setting them to HIGH if they were LOW, and LOW if they were HIGH
   if(digitalRead(LEDPin) == LOW){
     digitalWrite(LEDPin, HIGH);
@@ -304,9 +299,9 @@ void strobe() {
 }
 
 void moveRudder(int angle){
-  Serial.print("Moving rudder to ");
-  Serial.print(angle);
-  Serial.println(" degrees.");
+  // Serial.print("Moving rudder to ");
+  // Serial.print(angle);
+  // Serial.println(" degrees.");
 
   //correct angle if it is an invalid value
   int rudderLowerBound = 90 - (RUDDER_RANGE_DEGREES / 2);
@@ -328,7 +323,7 @@ void outputToSD(){
   if (dataFile) {
     char buffer[100];
     sprintf(buffer, "%f %f %f %f %f %f %f %f %d %d", sensorData.gpsLat, 
-              sensorData.gpsLng, sensorData.roll, sensorData.pitch, sensorData.yaw, 
+              sensorData.gpsLng, sensorData.gyroX, sensorData.gyroY, sensorData.gyroZ, 
               sensorData.accelX, sensorData.accelY, sensorData.accelZ, digitalRead(LimitPin), rudderServo.read());
     dataFile.println(buffer);
     Serial.println(buffer);
