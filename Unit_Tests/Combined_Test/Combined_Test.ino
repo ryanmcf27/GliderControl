@@ -37,7 +37,7 @@ struct SensorDataStruct {
 };
 
 /* Constants and Pins */
-static const int RXPin = 0, TXPin = 1, ServoPin = 2, LEDPin = 6, LimitPin = 8;
+static const int RXPin = 0, TXPin = 1, ServoPin = 3, LEDPin = 5, LimitPin = 8;
 static const uint32_t MONITOR_BAUD = 115200, GPS_BAUD = 9600;
 static const int RUDDER_RANGE_DEGREES = 180; //Limits the servo's movement from (90 - RUDDER_RANGE_DEGREES) to (90 + RUDDER_RANGE_DEGREES), corrects if invalid input is given to moveRudder function
 
@@ -128,8 +128,8 @@ void setup() {
   Serial.println("Enabled servoTask");
   imuTask.enable();
   Serial.println("Enabled imuTask");
-  strobeTask.enable();
-  Serial.println("Enabled strobeTask");
+  // strobeTask.enable();
+  // Serial.println("Enabled strobeTask");
   sdTask.enable();
   Serial.println("Enabled sdTask");
 
@@ -317,21 +317,28 @@ void moveRudder(int angle){
 }
 
 void outputToSD(){
-  // open the file named FILENAME on the SD card
-  File dataFile = SD.open(FILENAME, FILE_WRITE);
-  // if the file is available, write the contents of datastring to it
-  if (dataFile) {
-    char buffer[100];
+  // // open the file named FILENAME on the SD card
+  // File dataFile = SD.open(FILENAME, FILE_WRITE);
+  // // if the file is available, write the contents of datastring to it
+  // if (dataFile) {
+  //   char buffer[100];
+  //   sprintf(buffer, "%f %f %f %f %f %f %f %f %d %d", sensorData.gpsLat, 
+  //             sensorData.gpsLng, sensorData.gyroX, sensorData.gyroY, sensorData.gyroZ, 
+  //             sensorData.accelX, sensorData.accelY, sensorData.accelZ, digitalRead(LimitPin), rudderServo.read());
+  //   dataFile.println(buffer);
+  //   Serial.println(buffer);
+  //   //closing the file often flushes the data to the SD often, makes sure it actually gets saved on power down
+  //   dataFile.close();
+  // }  
+  // // if the file isn't open, pop up an error:
+  // else {
+  //   Serial.println("error opening file");
+  // }  
+
+  char buffer[100];
     sprintf(buffer, "%f %f %f %f %f %f %f %f %d %d", sensorData.gpsLat, 
               sensorData.gpsLng, sensorData.gyroX, sensorData.gyroY, sensorData.gyroZ, 
               sensorData.accelX, sensorData.accelY, sensorData.accelZ, digitalRead(LimitPin), rudderServo.read());
-    dataFile.println(buffer);
+    
     Serial.println(buffer);
-    //closing the file often flushes the data to the SD often, makes sure it actually gets saved on power down
-    dataFile.close();
-  }  
-  // if the file isn't open, pop up an error:
-  else {
-    Serial.println("error opening file");
-  }  
 }

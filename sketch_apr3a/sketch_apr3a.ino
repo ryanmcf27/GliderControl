@@ -1,5 +1,5 @@
 /*
-  Teensy_Descent
+  Sensor_Descent
 
   Custom code for Iowa State University's 2024-2025 Design Build Fly (DBF) team's X-1 glider
   
@@ -50,9 +50,9 @@ float releasedYaw = 0.0;
 enum {PRERELEASE, DESCENT_OUT, DESCENT_TURNAROUND, DESCENT_RETURN, DESCENT_CIRCLE, ERROR_STATE} flightState = PRERELEASE;
 
 /* Constants and Pins */
-static const int RXPin = 0, TXPin = 1, ServoPin = 5, LEDPin = 5, LimitPin = 8;
+static const int RXPin = 0, TXPin = 1, ServoPin = 3, LEDPin = 5, LimitPin = 8;
 static const uint32_t MONITOR_BAUD = 115200, GPS_BAUD = 9600;
-static const int RUDDER_RANGE_DEGREES = 90; //Limits the servo's movement from (90 - RUDDER_RANGE_DEGREES) to (90 + RUDDER_RANGE_DEGREES), corrects if invalid input is given to moveRudder function
+static const int RUDDER_RANGE_DEGREES = 180; //Limits the servo's movement from (90 - RUDDER_RANGE_DEGREES) to (90 + RUDDER_RANGE_DEGREES), corrects if invalid input is given to moveRudder function
 static const int LIMIT_TRIGGERED_BUFFER_MILLIS = 1000;
 //conversion factor to help us find the equation of the lines that we'd like the X-1 to turn around at and to start circular descent 
 static const float DEGREES_PER_FOOT_FROM_START_LINE = 1.109787E-5;     //NOTE this isn't how longitude and latitude work precisely, but will be fine on this small bit of the global scale
@@ -76,6 +76,19 @@ float AccX_prev, AccY_prev, AccZ_prev, GyroX_prev, GyroY_prev, GyroZ_prev;
 float B_accel = 0.14;     //Accelerometer LP filter paramter, (MPU6050 default: 0.14. MPU9250 default: 0.2)
 float B_gyro = 0.1;       //Gyro LP filter paramter, (MPU6050 default: 0.1. MPU9250 default: 0.17)
 
+//servo info
+#define SERVO_CENTER_DEGREES 90
+#define SERVO_TURN_RIGHT_SOFT_DEGREES 150
+#define SERVO_TURN_RIGHT_HARD_DEGREES 180
+#define SERVO_TURN_LEFT_SOFT_DEGREES 30
+#define SERVO_TURN_LEFT_HARD_DEGREES 0
+
+//timing info
+#define STRAIGHT_POST_RELEASE_MILLIS 2000
+#define TURNAROUND_MILLIS 5000
+#define STRAIGHT_POST_TURNAROUND_MILLIS 2000
+//will be used as "stopwatches" to achieve the timings outlined above for each stage of the flight
+int flightStateTimingStart, flightStateTimingEnd;
 
 /* Tasks */
 #define GPS_TASK_RATE 250
@@ -108,7 +121,7 @@ void setup() {
 
   //setup servo
   rudderServo.attach(ServoPin); //attach pin to servo object
-  moveRudder(90);               //set servo to 90 degrees
+  moveRudder(SERVO_CENTER_DEGREES);               //set servo to center position
 
   //setup IMU
   IMUinit();
@@ -170,8 +183,6 @@ void loop() {
           if((currentMillis - limitTriggeredTime) >= LIMIT_TRIGGERED_BUFFER_MILLIS){
             //start strobing LEDs by enabling strobe task
             strobeTask.enable();
-            //set release yaw
-            releasedYaw = sensorData.yaw;
             //update flightState
             flightState = DESCENT_OUT;
           }
@@ -182,32 +193,42 @@ void loop() {
       }
       break;
     case DESCENT_OUT:
-      //fly straight until reaching turn line - could add more control to straighten flight path if not on right path, for now just leave rudder at 90 deg
-      moveRudder(90);
-      if(sensorData.gpsLat >= (3.326530*sensorData.gpsLng + 402.420296 + DEGREES_PER_FOOT_FROM_START_LINE*TURNAROUND_FEET_FROM_START_LINE)){
-        //turn line has been passed, go to DESCENT_TURNAROUND
-        flightState = DESCENT_TURNAROUND;
+      //fly straight until reaching turn line 
+      moveRudder(SERVO_CENTER_DEGREES);
+      flightStateTimingStart = millis();
+      flightStateTimingEnd = flightStateTimingStart;
+      //wait in this loop for time specified by STRAIGHT_POST_RELEASE_MILLIS
+      while(flightStateTimingEnd - flightStateTimingStart < STRAIGHT_POST_RELEASE_MILLIS){
+        flightStateTimingEnd = millis();
       }
+      flightState = DESCENT_TURNAROUND;
       break;
     case DESCENT_TURNAROUND:
-      //turn around 180 degrees, using releaseYaw as reference
-      moveRudder(50); //TODO: replace with constant rudder angle for this turn
-      if(abs(sensorData.yaw - releasedYaw) >= 180){
-        //glider has completed 180 degree turn, go to DESCENT_RETURN
-        flightState = DESCENT_RETURN;
+      moveRudder(SERVO_TURN_LEFT_SOFT_DEGREES); //CAN CHANGE TO TURN RIGHT
+      flightStateTimingStart = millis();
+      flightStateTimingEnd = flightStateTimingStart;
+      //wait in this loop for time specified by TURNAROUND_MILLIS
+      while(flightStateTimingEnd - flightStateTimingStart < TURNAROUND_MILLIS){
+        flightStateTimingEnd = millis();
       }
+      flightState = DESCENT_RETURN;
       break;
     case DESCENT_RETURN:
       //fly straight until reaching finish line
-      moveRudder(90);
-      if(sensorData.gpsLat <= (3.326530*sensorData.gpsLng + 402.420296)){
-        //start line has been passed, go to DESCENT_CIRCLE
-        flightState = DESCENT_CIRCLE;
+      moveRudder(SERVO_CENTER_DEGREES);
+      flightStateTimingStart = millis();
+      flightStateTimingEnd = flightStateTimingStart;
+      //wait in this loop for time specified by STRAIGHT_POST_TURNAROUND_MILLIS
+      while(flightStateTimingEnd - flightStateTimingStart < STRAIGHT_POST_TURNAROUND_MILLIS){
+        flightStateTimingEnd = millis();
       }
       break;
     case DESCENT_CIRCLE:
       //set rudder to circle in scoring zone until landing
-      moveRudder(50); //TODO replace with constant rudder angle for our circular descent
+      moveRudder(SERVO_TURN_LEFT_HARD_DEGREES); //CAN CHANGE TO TURN RIGHT
+      while(1){
+        //infinite loop, circle until landing
+      }
       break;
     case ERROR_STATE:
       Serial.println("In ERROR flight state!!!");
@@ -389,9 +410,9 @@ void outputToSD(){
   // if the file is available, write the contents of datastring to it
   if (dataFile) {
     char buffer[100];
-    sprintf(buffer, "%f %f %f %f %f %f %f %f %d %d", sensorData.gpsLat, 
+    sprintf(buffer, "%f %f %f %f %f %f %f %f %d %d %d", sensorData.gpsLat, 
               sensorData.gpsLng, sensorData.roll, sensorData.pitch, sensorData.yaw, 
-              sensorData.accelX, sensorData.accelY, sensorData.accelZ, digitalRead(LimitPin), rudderServo.read());
+              sensorData.accelX, sensorData.accelY, sensorData.accelZ, digitalRead(LimitPin), rudderServo.read(), flightState);
     dataFile.println(buffer);
     Serial.println(buffer);
     //closing the file often flushes the data to the SD often, makes sure it actually gets saved on power down
@@ -402,3 +423,4 @@ void outputToSD(){
     Serial.println("error opening file");
   }  
 }
+
