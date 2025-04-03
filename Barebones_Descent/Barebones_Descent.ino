@@ -14,8 +14,6 @@
 #include <PWMServo.h> //must use this library because basic Servo.h Arduino library cannot run on Teensy 4.1's processor
 
 /* Method Prototypes */
-void updateGPS();
-void strobe();
 void moveRudder(int angle);
 
 
@@ -70,18 +68,10 @@ void setup() {
   rudderServo.attach(ServoPin); //attach pin to servo object
   moveRudder(SERVO_CENTER_DEGREES);               //set servo to center position
 
-  //setup runners and tasks
-  runner.init();
-  Serial.println("Initialized scheduler");
-
-  runner.addTask(strobeTask);
-  Serial.println("added strobeTask");
-
   delay(1000);
 }
 
 void loop() {
-  runner.execute();
   switch(flightState){
     case PRERELEASE:
       //checks to see if X-1 has been released based on limit switch
@@ -150,53 +140,4 @@ void loop() {
       break;
   }
 }
-
-void strobe() {
-  Serial.println("Strobe");
-
-  // Stobe LEDs by setting them to HIGH if they were LOW, and LOW if they were HIGH
-  if(digitalRead(LEDPin) == LOW){
-    digitalWrite(LEDPin, HIGH);
-  } else {
-    digitalWrite(LEDPin, LOW);
-  }
-}
-
-void moveRudder(int angle){
-  Serial.print("Moving rudder to ");
-  Serial.print(angle);
-  Serial.println(" degrees.");
-
-  //correct angle if it is an invalid value
-  int rudderLowerBound = 90 - (RUDDER_RANGE_DEGREES / 2);
-  int rudderUpperBound = 90 + (RUDDER_RANGE_DEGREES / 2);
-  if(angle < rudderLowerBound) {
-    angle = rudderLowerBound;
-  } else if (angle > rudderUpperBound) {
-    angle = rudderUpperBound;
-  }
-
-  //set servo position
-  rudderServo.write(angle);
-}
-
-// void outputToSD(){
-//   // open the file named FILENAME on the SD card
-//   File dataFile = SD.open(FILENAME, FILE_WRITE);
-//   // if the file is available, write the contents of datastring to it
-//   if (dataFile) {
-//     char buffer[100];
-//     sprintf(buffer, "%f %f %f %f %f %f %f %f %d %d", sensorData.gpsLat, 
-//               sensorData.gpsLng, sensorData.roll, sensorData.pitch, sensorData.yaw, 
-//               sensorData.accelX, sensorData.accelY, sensorData.accelZ, digitalRead(LimitPin), rudderServo.read());
-//     dataFile.println(buffer);
-//     Serial.println(buffer);
-//     //closing the file often flushes the data to the SD often, makes sure it actually gets saved on power down
-//     dataFile.close();
-//   }  
-//   // if the file isn't open, pop up an error:
-//   else {
-//     Serial.println("error opening file");
-//   }  
-// }
 
