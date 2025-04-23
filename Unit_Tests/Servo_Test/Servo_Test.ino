@@ -1,5 +1,5 @@
 #include <PWMServo.h> //must use this library because basic Servo.h Arduino library cannot run on Teensy 4.1's processor
-static const int ServoPin = 3;
+static const int ServoPin = 10;
 PWMServo rudderServo;                 //declare servo to control rudder
 
 void setup() {

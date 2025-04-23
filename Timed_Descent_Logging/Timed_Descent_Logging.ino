@@ -1,7 +1,9 @@
 /*
-  Simply_Timed_Descent
+  Timed_Descent_Logging
 
   Simplified code for Iowa State University's 2024-2025 Design Build Fly (DBF) team's X-1 glider
+
+  This program is for a timed descent which logs sensor data to the on-board micro-SD card throughout its flight.
   
 */
 
@@ -78,10 +80,10 @@ float B_gyro = 0.1;       //Gyro LP filter paramter, (MPU6050 default: 0.1. MPU9
 
 //servo info
 #define SERVO_CENTER_DEGREES 90
-#define SERVO_TURN_RIGHT_SOFT_DEGREES 50
-#define SERVO_TURN_RIGHT_HARD_DEGREES 30
-#define SERVO_TURN_LEFT_SOFT_DEGREES 130
-#define SERVO_TURN_LEFT_HARD_DEGREES 150
+#define SERVO_TURN_RIGHT_SOFT_DEGREES 150
+#define SERVO_TURN_RIGHT_HARD_DEGREES 180
+#define SERVO_TURN_LEFT_SOFT_DEGREES 30
+#define SERVO_TURN_LEFT_HARD_DEGREES 0
 
 //timing info
 #define STRAIGHT_POST_RELEASE_MILLIS 2000
@@ -89,7 +91,6 @@ float B_gyro = 0.1;       //Gyro LP filter paramter, (MPU6050 default: 0.1. MPU9
 #define STRAIGHT_POST_TURNAROUND_MILLIS 2000
 //will be used as "stopwatches" to achieve the timings outlined above for each stage of the flight
 int flightStateTimingStart, flightStateTimingEnd;
-#define LED_DELAY_MILLIS 200
 
 /* Tasks */
 #define GPS_TASK_RATE 250
@@ -171,7 +172,6 @@ void loop() {
   runner.execute();
   switch(flightState){
     case PRERELEASE:
-      Serial.println("prerelease");
       //checks to see if X-1 has been released based on limit switch
       if(digitalRead(LimitPin) == HIGH){
         //switch opened (X-1 likely released)
@@ -184,7 +184,7 @@ void loop() {
           //if the limit switch has been opened for specified time
           if((currentMillis - limitTriggeredTime) >= LIMIT_TRIGGERED_BUFFER_MILLIS){
             //start strobing LEDs by enabling strobe task
-            //strobeTask.enable();
+            strobeTask.enable();
             //update flightState
             flightState = DESCENT_OUT;
           }
@@ -195,7 +195,6 @@ void loop() {
       }
       break;
     case DESCENT_OUT:
-      Serial.println("descent out");
       //fly straight until reaching turn line 
       moveRudder(SERVO_CENTER_DEGREES);
       flightStateTimingStart = millis();
@@ -203,42 +202,20 @@ void loop() {
       //wait in this loop for time specified by STRAIGHT_POST_RELEASE_MILLIS
       while(flightStateTimingEnd - flightStateTimingStart < STRAIGHT_POST_RELEASE_MILLIS){
         flightStateTimingEnd = millis();
-        
-        Serial.println("Strobe");
-        // Stobe LEDs by setting them to HIGH if they were LOW, and LOW if they were HIGH
-        if(digitalRead(LEDPin) == LOW){
-          digitalWrite(LEDPin, HIGH);
-          delay(LED_DELAY_MILLIS);
-        } else {
-          digitalWrite(LEDPin, LOW);
-          delay(LED_DELAY_MILLIS);
-        }
       }
       flightState = DESCENT_TURNAROUND;
       break;
     case DESCENT_TURNAROUND:
-      Serial.println("descent turnaround");
       moveRudder(SERVO_TURN_LEFT_SOFT_DEGREES); //CAN CHANGE TO TURN RIGHT
       flightStateTimingStart = millis();
       flightStateTimingEnd = flightStateTimingStart;
       //wait in this loop for time specified by TURNAROUND_MILLIS
       while(flightStateTimingEnd - flightStateTimingStart < TURNAROUND_MILLIS){
         flightStateTimingEnd = millis();
-
-        Serial.println("Strobe");
-        // Stobe LEDs by setting them to HIGH if they were LOW, and LOW if they were HIGH
-        if(digitalRead(LEDPin) == LOW){
-          digitalWrite(LEDPin, HIGH);
-          delay(LED_DELAY_MILLIS);
-        } else {
-          digitalWrite(LEDPin, LOW);
-          delay(LED_DELAY_MILLIS);
-        }
       }
       flightState = DESCENT_RETURN;
       break;
     case DESCENT_RETURN:
-      Serial.println("descent return");
       //fly straight until reaching finish line
       moveRudder(SERVO_CENTER_DEGREES);
       flightStateTimingStart = millis();
@@ -246,34 +223,13 @@ void loop() {
       //wait in this loop for time specified by STRAIGHT_POST_TURNAROUND_MILLIS
       while(flightStateTimingEnd - flightStateTimingStart < STRAIGHT_POST_TURNAROUND_MILLIS){
         flightStateTimingEnd = millis();
-
-        Serial.println("Strobe");
-        // Stobe LEDs by setting them to HIGH if they were LOW, and LOW if they were HIGH
-        if(digitalRead(LEDPin) == LOW){
-          digitalWrite(LEDPin, HIGH);
-          delay(LED_DELAY_MILLIS);
-        } else {
-          digitalWrite(LEDPin, LOW);
-          delay(LED_DELAY_MILLIS);
-        }
       }
-      flightState = DESCENT_CIRCLE;
       break;
     case DESCENT_CIRCLE:
-      Serial.println("descent circle");
       //set rudder to circle in scoring zone until landing
       moveRudder(SERVO_TURN_LEFT_HARD_DEGREES); //CAN CHANGE TO TURN RIGHT
       while(1){
         //infinite loop, circle until landing
-        Serial.println("Strobe");
-        // Stobe LEDs by setting them to HIGH if they were LOW, and LOW if they were HIGH
-        if(digitalRead(LEDPin) == LOW){
-          digitalWrite(LEDPin, HIGH);
-          delay(LED_DELAY_MILLIS);
-        } else {
-          digitalWrite(LEDPin, LOW);
-          delay(LED_DELAY_MILLIS);
-        }
       }
       break;
     case ERROR_STATE:
